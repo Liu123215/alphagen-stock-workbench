@@ -40,6 +40,11 @@ def demo_data(market):
     return pd.DataFrame(rows, columns=['date','symbol','name','market','sector']+FIELDS)
 
 def validate_csv(text, market):
+    """Parse and reject malformed OHLCV before replacing any saved dataset.
+
+    Symbols are strings so leading zeroes survive CSV import. Dates remain
+    canonical ISO strings after validation, allowing lexical time ordering.
+    """
     try:
         df = pd.read_csv(io.StringIO(text.lstrip('\ufeff')), dtype={'symbol':str})
     except Exception as e:
@@ -81,7 +86,12 @@ def validate_csv(text, market):
     return df.sort_values(['date','symbol']).reset_index(drop=True)
 
 class Formula:
-    """Strict AST interpreter. Ref accepts only positive lags; never calls eval."""
+    """Interpret a bounded AlphaGen-style subset without executing Python code.
+
+    Expressions can only access the explicitly allowed OHLCV fields and
+    operators. Positive Ref/Delta lags prevent formulas from reading future
+    rows. This standalone implementation is not a bit-exact Qlib evaluator.
+    """
     def __init__(self, expression):
         if not isinstance(expression,str) or len(expression)>2000: raise ValueError('因子公式过长或类型错误。')
         s = re.sub(r'\$(\w+)',r'F_\1',expression)
@@ -156,6 +166,8 @@ def validate_pool(pool, market, train_end):
     return {k:pool[k] for k in ['exprs','weights','market','trained_until']}
 
 def zscore(frame):
+    # A row is one date, columns are stocks: normalize cross-sectionally, not
+    # across time. A constant cross-section maps to zero rather than infinity.
     mean=frame.mean(axis=1); std=frame.std(axis=1,ddof=0)
     return frame.sub(mean,axis=0).div(std.where(std>1e-12,1),axis=0).clip(-8,8)
 
@@ -165,11 +177,19 @@ def safe_corr(x,y):
     return float(np.corrcoef(x[ok],y[ok])[0,1])
 
 def analyze(df, market='CN', horizon=5, topk=3, cost_bps=15, pool=None, source='demo'):
+    """Fit on early dates and assess the later, untouched date ranges.
+
+    A signal at close[t] predicts open[t+h+1] / open[t+1] - 1. Arrays use
+    [date, stock, factor] order. Imported pools supply ranking weights, while
+    their score-to-return calibration is fitted using the training slice only.
+    """
     if market not in STOCKS: raise ValueError('市场参数错误。')
     if horizon not in (1,5,10,20): raise ValueError('预测周期仅支持 1 / 5 / 10 / 20 个交易日。')
     if type(topk)!=int or not 1<=topk<=20: raise ValueError('持仓数应为 1～20。')
     if not np.isfinite(cost_bps) or not 0<=cost_bps<=200: raise ValueError('单边综合成本应在 0～200 bps。')
     fields={x:df.pivot(index='date',columns='symbol',values=x).sort_index() for x in FIELDS}
+    # Require the entire universe to have OHLCV for a date; never carry a
+    # suspended/missing stock's old price forward into a new trading day.
     keep=np.logical_and.reduce([v.notna().all(axis=1).to_numpy() for v in fields.values()])
     original=len(keep); fields={k:v.loc[keep] for k,v in fields.items()}
     close=fields['close']; dates=list(close.index); n=len(dates)
@@ -184,6 +204,8 @@ def analyze(df, market='CN', horizon=5, topk=3, cost_bps=15, pool=None, source='
     # Signal after t close; enter at t+1 open, exit t+h+1 open.
     target=(fields['open'].shift(-horizon-1)/fields['open'].shift(-1)-1).to_numpy()
     day=np.arange(n)[:,None]*np.ones((1,len(close.columns)),dtype=int)
+    # Purge labels crossing split boundaries: their exits would otherwise leak
+    # validation or test prices into model fitting / validation.
     train=valid&np.isfinite(target)&(day+horizon+1<cut)
     val=valid&np.isfinite(target)&(day>=cut)&(day+horizon+1<vcut)
     test=valid&np.isfinite(target)&(day>=vcut)
@@ -218,7 +240,8 @@ def analyze(df, market='CN', horizon=5, topk=3, cost_bps=15, pool=None, source='
         for j in range(len(exprs)):
             fic=safe_corr(x[i,:,j],target[i])
             if fic is not None: factor_ics[j].append(fic)
-    # Non-overlapping, fully liquidated equal-weight baskets; costs paid both sides.
+    # Non-overlapping, fully liquidated equal-weight baskets; costs paid both
+    # sides. The curve is sampled at exits, so intra-period drawdown is unknown.
     nav=bench=1.; equity=[{'date':dates[vcut],'nav':1.,'benchmark':1.}]; trades=[]
     k=min(topk,len(close.columns))
     for i in range(vcut,n-horizon-1,horizon):

@@ -31,6 +31,8 @@ def pool_for(market):
     return json.loads(p.read_text(encoding='utf-8')) if p.exists() else None
 
 def atomic(path,text):
+    # Write a sibling temporary file first so readers do not see a partial CSV
+    # or JSON document if the write is interrupted.
     tmp=path.with_suffix(path.suffix+'.tmp'); tmp.write_text(text,encoding='utf-8'); os.replace(tmp,path)
 
 def result(body):
@@ -68,6 +70,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if not self.local(): return self.respond(403,{'error':'只接受本机访问。'})
+        # Bind to loopback and reject cross-origin browser requests. Requiring
+        # JSON also prevents ordinary cross-site form submissions to this API.
         origin=self.headers.get('Origin')
         if origin and origin not in [f'http://127.0.0.1:{self.server.server_port}',f'http://localhost:{self.server.server_port}']:
             return self.respond(403,{'error':'拒绝跨站请求。'})
@@ -83,6 +87,8 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/sync':
                 frame=market_data.fetch_daily(market,body.get('symbols'))
                 with LOCK:
+                    # Do not replace a usable dataset until the downloaded
+                    # universe can also be evaluated with the active pool.
                     engine.analyze(frame,market,pool=pool_for(market),source='tencent')
                     atomic(DATA/(market+'.csv'),frame.to_csv(index=False))
                     atomic(DATA/(market+'_source.json'),json.dumps({'source':'tencent','details':frame.attrs.get('source_details',{})}))

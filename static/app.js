@@ -88,12 +88,16 @@ function poolGuide(){if(!data)return;modal('接入 AlphaGen 因子池',`<p>支�
 function trainingGuide(){modal('上游强化学习训练接入',`<p>当前版本已经提供因子池评估链路；强化学习训练需要在独立环境运行上游项目。</p><ol><li>打开 <a href="https://github.com/ICT-FinD-Lab/alphagen" target="_blank" rel="noopener">AlphaGen 官方仓库</a>，按上游说明配置 Python、PyTorch、Qlib 和股票池数据。</li><li>分别准备 A 股和港股按日对齐的数据。港股需要自备数据及交易日历，不能直接使用 A 股数据目录。</li><li>只用训练时段挖掘因子，保存因子池的 <code>exprs</code> 与 <code>weights</code>。训练脚本与环境以所用上游版本为准。</li><li>回到「因子实验室」导入 JSON，声明市场与训练截止日；不支持的公式会被拒绝，不会静默替换为基线。</li></ol><div class="notice">未捆绑上游源码、训练任务或权重；尚未验证真实 AlphaGen 训练产物的端到端推理。examples 中仅有格式示例，不能视为训练模型。</div>`)}
 function resetGuide(){modal('重置当前市场数据',`<p>将删除本工作台保存的 ${market==='CN'?'A 股':'港股'} CSV 与该市场导入的因子池，恢复到合成演示数据。原始导入文件和另一市场的数据不受影响。</p><button class="button primary" id="confirmReset">确认重置为演示数据</button>`);$('#confirmReset').onclick=async()=>{try{await api('reset',{market});$('#modal').close();await run();toast('当前市场已恢复为演示数据')}catch(e){toast(e.message)}}}
 async function importFile(input,kind){const file=input.files[0];if(!file)return;input.value='';if(file.size>10_000_000)return toast('文件应小于 10MB');if(busy)return toast('请等待当前计算完成');setBusy(true);$('#error').hidden=true;try{const text=await file.text();if(kind==='data')await api('data',{market,csv:text});else{const pool=JSON.parse(text);if(!pool||typeof pool!=='object'||Array.isArray(pool))throw Error('因子池必须是 JSON 对象');if(pool.market&&pool.market!==market)throw Error('因子池 market 与当前市场不一致');if(pool.trained_until&&pool.trained_until!==input.dataset.trained)throw Error('文件中的训练截止日与填写日期不一致，请核对后重试');await api('pool',{market,pool:{...pool,market,trained_until:input.dataset.trained}});$('#modal').close()}toast(kind==='data'?'真实数据校验通过，已保存到本机':'因子池校验通过，已接入')}catch(e){$('#error').textContent=e.message;$('#error').hidden=false;toast(e.message);setBusy(false);return}setBusy(false);await run()}
+// Refresh the whole existing online universe as one batch. If any symbol
+// fails, the server retains its previous snapshot and its as-of date.
 async function refreshOnline(){
  if(busy||!data||data.source!=='tencent')return;
  const symbols=data.instruments.map(s=>s.symbol);setBusy(true);$('#error').hidden=true;
  try{await api('sync',{market,symbols});toast('行情已更新，正在重新计算');setBusy(false);await run()}
  catch(e){$('#error').textContent='行情更新失败，仍显示截至 '+data.asof+' 的旧数据：'+e.message;$('#error').hidden=false;setBusy(false)}
 }
+// Ranking is cross-sectional, so a first added symbol needs two reference
+// stocks. CSV replacement is disclosed before the user starts this action.
 function addStockGuide(){
  if(!data||busy)return;
  const existing=data.source==='tencent'?data.instruments.map(s=>s.symbol):[];

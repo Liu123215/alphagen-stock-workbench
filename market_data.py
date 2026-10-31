@@ -14,6 +14,11 @@ import pandas as pd
 from engine import STOCKS, validate_csv
 
 def fetch_daily(market, symbols):
+    """Fetch one complete market batch; raise on any failed constituent.
+
+    The returned frame records fallback symbols and retrieval time in attrs.
+    Persistence is handled by app.py after validation and a trial analysis.
+    """
     if market not in STOCKS: raise ValueError('市场参数错误。')
     if not isinstance(symbols,list) or not 3<=len(symbols)<=12: raise ValueError('每次同步 3～12 只股票。')
     pattern=r'\d{6}' if market=='CN' else r'\d{5}'
@@ -37,6 +42,8 @@ def fetch_daily(market, symbols):
             obj=json.loads(payload); info=obj['data'][remote]
             bars=info.get('qfqday')
             if not bars:
+                # Some replies contain only `day`; keep the provider's values
+                # but record the affected symbols because adjustment is unverified.
                 bars=info.get('day')
                 if bars: fallback.append(symbol)
             if not bars: raise ValueError('日线为空。')
