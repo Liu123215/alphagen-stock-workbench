@@ -137,6 +137,6 @@ Tests cover time-split leakage, delayed and non-overlapping trades, costs, formu
 
 ## Authors, copyright and licensing
 
-This workbench is an independent project maintained in [Liu123215's repository](https://github.com/Liu123215/alphagen-stock-workbench); it is not an official AlphaGen or Kronos product. See [NOTICE.md](NOTICE.md) for the upstream AlphaGen research authors, the Kronos original author's copyright notice, and the distinction between the source projects and this implementation.
+This workbench is an independent project maintained in [Liu123215's repository](https://github.com/Liu123215/alphagen-stock-workbench); it is not an official AlphaGen or Kronos product. The AlphaGen paper is by Shuo Yu, Hongyan Xue, Xiang Ao, Feiyang Pan, Jia He, Dandan Tu and Qing He. The Kronos core in the reference Windows project carries the original notice **Copyright (c) 2025 ShiYu**; this workbench does not bundle that model code or its weights. See [NOTICE.md](NOTICE.md) for full attribution and the distinction between the source projects and this implementation.
 
 No open-source license is currently included for this repository. Public visibility does not by itself grant an open-source license or permission to redistribute its contents. Upstream materials remain subject to their own terms.

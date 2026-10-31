@@ -206,4 +206,4 @@ data/               用户本地状态与日志（运行时生成）
 
 ## 作者、版权与许可
 
-工作台由 [Liu123215](https://github.com/Liu123215) 的仓库维护；它是独立研究界面，并非 AlphaGen 或 Kronos 官方产品。AlphaGen 上游研究作者和 Kronos 原作者的署名、各自版权范围与许可说明见 [NOTICE.md](NOTICE.md)。本仓库目前未附开源许可证；公开可见不代表已授予任意复制或再分发许可。
+工作台由 [Liu123215](https://github.com/Liu123215) 的仓库维护；它是独立研究界面，并非 AlphaGen 或 Kronos 官方产品。AlphaGen 上游论文作者为 Shuo Yu、Hongyan Xue、Xiang Ao、Feiyang Pan、Jia He、Dandan Tu 和 Qing He。界面参考的 Kronos Windows 项目所含模型核心的原版权声明为 **Copyright (c) 2025 ShiYu**。本工作台未打包该模型代码或权重。完整署名及各项目的版权范围、许可说明见 [NOTICE.md](NOTICE.md)。本仓库目前未附开源许可证；公开可见不代表已授予任意复制或再分发许可。
