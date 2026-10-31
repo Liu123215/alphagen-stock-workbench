@@ -1,0 +1,10 @@
+{
+  "exprs": [
+    "Sub(Div($close,Ref($close,20d)),1.0)",
+    "Div($volume,Mean($volume,20d))"
+  ],
+  "weights": [0.4, -0.15],
+  "market": "CN",
+  "trained_until": "2024-01-01",
+  "origin": "FORMAT EXAMPLE ONLY. Manually selected formulas and weights, not trained by AlphaGen."
+}

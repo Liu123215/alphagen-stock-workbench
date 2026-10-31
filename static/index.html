@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>AlphaGen · A / H 股研究工作台</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234763ee'/%3E%3Cpath d='M7 24 16 7l9 17M11 18h10' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<aside class="sidebar">
+ <a class="brand" href="/" aria-label="AlphaGen 首页"><span class="brand-icon">α</span><div><b>AlphaGen<span> LAB</span></b><small>QUANTITATIVE WORKSPACE</small></div></a>
+ <div class="workspace"><span class="workspace-icon">A/H</span><div>我的量化研究室<small>本地工作空间</small></div><span class="workspace-arrow">⌄</span></div>
+ <p class="nav-label">RESEARCH <span>研究</span></p>
+ <nav aria-label="主要导航">
+  <button class="nav active" data-page="overview"><span data-icon="grid"></span>研究总览<span class="nav-pill">概览</span></button>
+  <button class="nav" data-page="stocks"><span data-icon="chart"></span>股票研究</button>
+  <button class="nav" data-page="factors"><span data-icon="layers"></span>因子实验室<span class="count" id="navFactorCount">6</span></button>
+  <button class="nav" data-page="backtest"><span data-icon="flask"></span>策略回测</button>
+  <button class="nav" data-page="watchlist"><span data-icon="star"></span>我的自选<span class="count" id="watchCount">0</span></button>
+ </nav>
+ <p class="nav-label">WORKSPACE <span>工作空间</span></p>
+ <nav aria-label="工作空间导航"><button class="nav" data-page="data"><span data-icon="database"></span>数据中心</button><button class="nav" id="helpButton"><span data-icon="book"></span>研究指南<span data-icon="external"></span></button></nav>
+ <div class="side-bottom"><div class="engine-card"><div><span class="status-dot"></span><b>本地研究引擎</b><span class="engine-badge">CPU</span></div><p id="sideEngine">Ridge 因子基线 · 就绪</p><div class="engine-line"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><a class="source-link" href="https://github.com/ICT-FinD-Lab/alphagen" target="_blank" rel="noopener"><span data-icon="github"></span>AlphaGen 上游研究<span data-icon="external"></span></a><div class="profile"><span>研</span><div>个人研究空间<small>AlphaGen Workbench v1.0.0</small></div></div></div>
+</aside>
+<div class="layout">
+ <header class="topbar"><div class="breadcrumb"><span data-icon="panel"></span><span class="crumb-space">工作空间</span><i>/</i><strong id="crumb">研究总览</strong></div><div class="top-actions"><div class="search-box"><span data-icon="search"></span><input id="globalSearch" aria-label="搜索股票名称或代码" placeholder="搜索股票名称 / 代码"><kbd>Ctrl K</kbd></div><span class="connection"><i class="status-dot"></i>本地服务</span><button class="icon-button" id="themeToggle" aria-label="切换深浅主题" title="切换深浅主题"><span data-icon="moon"></span></button><button class="avatar" id="aboutButton" aria-label="关于工作台">研</button></div></header>
+ <main id="main">
+  <section class="hero"><div><div class="eyebrow"><span></span>ALPHA RESEARCH, MADE VISIBLE</div><h1 id="pageTitle">让每一个信号，都有迹可循<span class="title-dot">.</span></h1><p id="pageDescription">连接 A 股与港股，从因子发现到策略验证，构建你的量化研究工作流。</p></div><div class="hero-actions"><button class="button" id="addStock">＋ 添加股票</button><button class="button" id="exportReport"><span data-icon="download"></span>导出研究结果</button><button class="button primary" id="runButton"><span data-icon="play"></span>运行研究</button></div></section>
+  <div class="mode-banner" id="modeBanner"><span data-icon="info"></span><div><strong id="dataMode">演示数据模式</strong><span id="modeText">所有行情为可复现的合成数据，预测与回测仅用于体验研究流程。</span></div><button id="refreshMarket" hidden>更新在线行情<span data-icon="refresh"></span></button><button id="connectData">连接真实数据<span data-icon="arrow"></span></button></div>
+  <section class="research-config card" aria-label="研究参数"><div class="market-switch" role="group" aria-label="选择市场"><button class="active" data-market="CN"><span class="market-square cn">A</span>A 股市场</button><button data-market="HK"><span class="market-square hk">H</span>港股市场</button></div><div class="config-field"><label for="horizon">预测周期</label><select id="horizon"><option value="1">未来 1 个交易日</option><option value="5" selected>未来 5 个交易日</option><option value="10">未来 10 个交易日</option><option value="20">未来 20 个交易日</option></select></div><div class="config-field model-field"><label>当前引擎</label><button id="modelButton"><span class="tiny-dot"></span><span id="modelLabel">内置因子 · Ridge 基线</span><span data-icon="chevron"></span></button></div><div class="config-date"><span data-icon="calendar"></span><div>数据截至<small id="asof">加载中</small></div></div></section>
+  <div id="loading" class="loading" role="status" hidden><span class="spinner"></span>正在计算因子、拟合训练样本并评估样本外表现…</div>
+  <div id="error" role="alert" class="error" hidden></div>
+  <div id="content"></div>
+  <footer><div><span class="footer-mark">α</span>AlphaGen Workbench<span>独立研究界面 · 因子池格式兼容上游</span></div><span id="footerStatus">本地计算 · 数据保存在本机</span></footer>
+ </main>
+</div>
+<dialog id="modal"><div class="modal-heading"><div><div class="eyebrow">RESEARCH WORKSPACE</div><h2 id="modalTitle"></h2></div><button class="icon-button" id="closeModal" aria-label="关闭弹窗"><span data-icon="close"></span></button></div><div id="modalBody"></div></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+<input id="csvFile" type="file" accept=".csv,text/csv" hidden><input id="poolFile" type="file" accept=".json,application/json" hidden>
+</body></html>
