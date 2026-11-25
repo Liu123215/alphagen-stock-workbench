@@ -4,7 +4,7 @@
 
 A local, browser-based research workspace maintained at [Liu123215/alphagen-stock-workbench](https://github.com/Liu123215/alphagen-stock-workbench). It brings daily price charts, factor signals, stock ranking, imported factor-pool evaluation, and a simplified backtest into one interface.
 
-> **What this version does:** version 1.0.0 starts with synthetic demonstration data and a fixed-factor Ridge baseline. It can fetch daily A-share and Hong Kong prices or import your CSV, and it can evaluate a supported subset of AlphaGen-style factor-pool JSON. It does not install or run upstream AlphaGen reinforcement-learning training, include a pretrained model, or reproduce the upstream Qlib engine bit-for-bit. The current application interface is in Chinese; this document translates the main workflows.
+> **What this version does:** version 1.1.0 starts with synthetic demonstration data and a fixed-factor Ridge baseline. It can fetch daily A-share and Hong Kong prices or import your CSV, and it can evaluate a supported subset of AlphaGen-style factor-pool JSON. It does not install or run upstream AlphaGen reinforcement-learning training, include a pretrained model, or reproduce the upstream Qlib engine bit-for-bit. The current application interface is in Chinese; this document translates the main workflows.
 
 ![Workbench overview](preview.png)
 
@@ -86,7 +86,7 @@ The snippet illustrates the format; it is not a complete importable dataset. Opt
 
 The built-in factors measure 20-day momentum, 60-day trend deviation, five-day reversal, 20-day relative volatility, relative volume, and intraday strength. Factors are normalized across stocks for each date, clipped to ±8 and used by a Ridge regression with penalty 10; the intercept is not penalized.
 
-Dates are split chronologically into 60% training, 20% validation and 20% test. A training label must exit before the training boundary; a validation label must exit before the test boundary. Test data is not used to refit the model. The target for horizon `h` is:
+Dates are normally split chronologically into 60% training, 20% validation and 20% test. If an imported factor pool's declared mining cutoff is later than the default training end, the boundary moves forward and the remaining dates are divided between validation and test. Both evaluation periods start strictly after the declared cutoff. The declaration is supplied by the user and cannot be independently verified. A training label must exit before the training boundary; a validation label must exit before the test boundary. Test data is not used to refit the model. The target for horizon `h` is:
 
 ```text
 open[t + h + 1] / open[t + 1] - 1
@@ -100,7 +100,9 @@ The chart samples equity at exits, so it can understate intra-period drawdown. S
 
 ## AlphaGen factor-pool import
 
-[ICT-FinD-Lab/alphagen](https://github.com/ICT-FinD-Lab/alphagen) exports `exprs` and `weights` from `LinearAlphaPool.to_json_dict()`. Select a file in the factor lab and declare the market and the last date used to mine the factors. The declared date must not be later than this dataset's training cutoff; the app cannot independently verify that declaration.
+[ICT-FinD-Lab/alphagen](https://github.com/ICT-FinD-Lab/alphagen) exports `exprs` and `weights` from `LinearAlphaPool.to_json_dict()`. Select a file in the factor lab and declare the market and the actual last date used to mine the factors. The declared cutoff may be later than the default training end, but cannot exceed the latest common market-data date. Validation and test move forward accordingly. If too few valid samples remain, the pool can still be imported for relative factor scores only; return estimates, independent validation and out-of-sample backtests are unavailable. For independent evaluation, update or extend the price data, or choose a shorter horizon; do not claim an earlier cutoff to pass validation. The app cannot independently verify the declaration.
+
+After a successful import, inspect expressions, weights and test-period IC in the factor lab, select a stock to see its ranking and factor contributions, then inspect the actual split dates and assumptions in the backtest. Importing does not train AlphaGen. The pool importer accepts JSON expressions and weights, not a CSV of daily factor values; market-data CSVs are imported separately in the data center.
 
 ```json
 {

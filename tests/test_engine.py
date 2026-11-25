@@ -41,9 +41,39 @@ class EngineTests(unittest.TestCase):
         pool={'exprs':engine.BUILTIN['exprs'][:2],'weights':[.4,-.8],'market':'CN','trained_until':'2025-01-01'}
         out=engine.analyze(self.df,pool=pool)
         self.assertTrue(out['poolImported']);self.assertEqual([f['weight'] for f in out['factors']],[.4,-.8])
-        for key,value in [('trained_until','2026-10-01'),('market','HK'),('weights',[0,0])]:
+        for key,value in [('trained_until','2026-10-24'),('market','HK'),('weights',[0,0])]:
             bad=copy.deepcopy(pool);bad[key]=value
             with self.subTest(key=key),self.assertRaises(ValueError):engine.analyze(self.df,pool=bad)
+
+    def test_recent_pool_cutoff_moves_evaluation_after_mining(self):
+        pool={'exprs':engine.BUILTIN['exprs'][:2],'weights':[.4,-.8],'market':'CN','trained_until':'2025-11-20'}
+        out=engine.analyze(self.df,pool=pool)
+        self.assertGreaterEqual(out['trainEnd'],pool['trained_until'])
+        self.assertGreater(out['validationStart'],pool['trained_until'])
+        self.assertGreater(out['testStart'],pool['trained_until'])
+        self.assertGreaterEqual(out['metrics']['validation']['samples'],20)
+        self.assertGreaterEqual(out['metrics']['test']['samples'],20)
+        self.assertTrue(all(t['signal']>pool['trained_until'] for t in out['backtest']['trades']))
+
+    def test_pool_cutoff_on_nontrading_day_stays_out_of_validation(self):
+        pool={'exprs':engine.BUILTIN['exprs'][:2],'weights':[.4,-.8],'market':'CN','trained_until':'2025-11-22'}
+        out=engine.analyze(self.df,pool=pool)
+        self.assertGreater(out['validationStart'],pool['trained_until'])
+        self.assertGreater(out['testStart'],pool['trained_until'])
+
+    def test_pool_cutoff_without_later_data_is_score_only(self):
+        pool={'exprs':engine.BUILTIN['exprs'][:2],'weights':[.4,-.8],'market':'CN','trained_until':'2026-10-22'}
+        result=engine.clean_json(engine.analyze(self.df,pool=pool))
+        self.assertTrue(result['inferenceOnly'])
+        self.assertIsNone(result['testStart'])
+        self.assertIsNone(result['backtest']['return'])
+        self.assertEqual(result['backtest']['trades'],[])
+        self.assertEqual(result['metrics']['test']['samples'],0)
+        self.assertTrue(all(s['prediction'] is None for s in result['instruments']))
+        self.assertTrue(all(s['score'] is not None for s in result['instruments']))
+        pool['trained_until']='2027-01-01'
+        with self.assertRaisesRegex(ValueError,'不能晚于行情截至日'):
+            engine.analyze(self.df,pool=pool)
 
     def test_csv_roundtrip_and_rejections(self):
         text=self.df.to_csv(index=False);df=engine.validate_csv(text,'CN')

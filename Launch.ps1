@@ -4,7 +4,7 @@ $port = 8765
 $url = "http://127.0.0.1:$port"
 try {
     $existing = Invoke-RestMethod "$url/api/health" -TimeoutSec 2
-    if ($existing.ok -and $existing.version -eq '1.0.0') {
+    if ($existing.ok -and $existing.version -eq '1.1.0') {
         Start-Process $url
         Write-Host "AlphaGen Workbench is running: $url"
         exit 0

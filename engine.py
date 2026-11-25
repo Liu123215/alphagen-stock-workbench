@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 STOCKS = {
     'CN': [('600519','贵州茅台',1680,'消费'),('000625','长安汽车',14,'汽车'),('300750','宁德时代',235,'新能源'),('600036','招商银行',36,'金融'),('601318','中国平安',48,'金融'),('000333','美的集团',65,'家电'),('002594','比亚迪',260,'汽车'),('600900','长江电力',27,'公用事业'),('601012','隆基绿能',20,'新能源'),('002415','海康威视',30,'科技'),('688981','中芯国际',55,'半导体'),('600030','中信证券',24,'金融')],
     'HK': [('00700','腾讯控股',400,'互联网'),('09988','阿里巴巴',90,'互联网'),('03690','美团',130,'互联网'),('01810','小米集团',22,'科技'),('00941','中国移动',72,'通信'),('00939','建设银行',6,'金融'),('02318','中国平安',40,'金融'),('01211','比亚迪股份',230,'汽车'),('09618','京东集团',120,'互联网'),('00388','香港交易所',290,'金融')]
@@ -150,7 +150,7 @@ class Formula:
         if np.isscalar(result): raise ValueError('因子必须含行情字段。')
         return result.replace([np.inf,-np.inf],np.nan)
 
-def validate_pool(pool, market, train_end):
+def validate_pool(pool, market, data_end):
     if not isinstance(pool,dict): raise ValueError('因子池必须为 JSON 对象。')
     exprs=pool.get('exprs'); weights=pool.get('weights')
     if not isinstance(exprs,list) or not 1<=len(exprs)<=20: raise ValueError('因子池需要 1～20 个 exprs。')
@@ -160,10 +160,10 @@ def validate_pool(pool, market, train_end):
     if pool.get('market')!=market: raise ValueError('因子池 market 必须为当前市场 CN 或 HK。')
     try: trained = datetime.strptime(pool['trained_until'],'%Y-%m-%d').date()
     except (ValueError,KeyError,TypeError) as e: raise ValueError('需提供因子挖掘数据截止日 trained_until，避免测试集泄漏。') from e
-    if trained>datetime.strptime(train_end,'%Y-%m-%d').date():
-        raise ValueError(f'因子挖掘截止日不能晚于本数据训练截止日 {train_end}。')
+    if trained>datetime.strptime(data_end,'%Y-%m-%d').date():
+        raise ValueError(f'因子挖掘截止日不能晚于行情截至日 {data_end}；请先更新行情或导入更长的日线数据。')
     for expr in exprs: Formula(expr)
-    return {k:pool[k] for k in ['exprs','weights','market','trained_until']}
+    return {'exprs':exprs,'weights':weights,'market':market,'trained_until':trained.isoformat()}
 
 def zscore(frame):
     # A row is one date, columns are stocks: normalize cross-sectionally, not
@@ -194,8 +194,20 @@ def analyze(df, market='CN', horizon=5, topk=3, cost_bps=15, pool=None, source='
     original=len(keep); fields={k:v.loc[keep] for k,v in fields.items()}
     close=fields['close']; dates=list(close.index); n=len(dates)
     if n<180: raise ValueError('对齐后不足 180 个共同交易日，请补充数据。')
-    cut=int(n*.6); vcut=int(n*.8); train_end=dates[cut-1]
-    if pool: pool=validate_pool(pool,market,train_end)
+    cut=int(n*.6); vcut=int(n*.8); split_adjusted=False
+    if pool:
+        pool=validate_pool(pool,market,dates[-1])
+        # A supplied factor pool has seen every date through trained_until.
+        # Keep all validation/test signals strictly after that date, including
+        # when the declared cutoff is a weekend or exchange holiday.
+        pool_cut=int(np.searchsorted(dates,pool['trained_until'],side='right'))
+        if pool_cut>cut:
+            cut=pool_cut
+            vcut=cut+(n-cut)//2
+            split_adjusted=True
+        # If no subsequent dates exist, the pool can still produce scores;
+        # evaluation metrics and return estimates must remain unavailable.
+    train_end=dates[cut-1]
     exprs=pool['exprs'] if pool else BUILTIN['exprs']
     raw=[Formula(e).run(fields) for e in exprs]
     normalized=[zscore(x) for x in raw]
@@ -209,16 +221,28 @@ def analyze(df, market='CN', horizon=5, topk=3, cost_bps=15, pool=None, source='
     train=valid&np.isfinite(target)&(day+horizon+1<cut)
     val=valid&np.isfinite(target)&(day>=cut)&(day+horizon+1<vcut)
     test=valid&np.isfinite(target)&(day>=vcut)
-    if train.sum()<100 or test.sum()<20: raise ValueError('有效因子或样本数量不足，请缩短窗口或补充数据。')
+    inference_only=bool(pool and (train.sum()<100 or val.sum()<20 or test.sum()<20))
+    if inference_only:
+        # No calibrated forecast or out-of-sample claim without enough data.
+        val[:]=False; test[:]=False; cut=n; vcut=n
+        train_end=dates[-1]
+    elif train.sum()<100:
+        raise ValueError('训练期有效因子样本不足；请检查公式或补充更长的行情数据。')
+    elif val.sum()<20 or test.sum()<20:
+        raise ValueError('有效验证或测试样本数量不足，请缩短预测周期或补充行情数据。')
     if pool:
         weights=np.array(pool['weights'],dtype=float)
-        # Artifact scores are not probabilities. Calibration is fit on training only.
-        train_score=x[train]@weights
-        design=np.c_[np.ones(len(train_score)),train_score]
-        beta=np.linalg.lstsq(design,target[train],rcond=None)[0]
-        pred=beta[0]+(x@weights)*beta[1]
-        contributions=x[-1]*weights*beta[1]
         ranking=x@weights
+        if inference_only:
+            pred=np.full(ranking.shape,np.nan)
+            contributions=x[-1]*weights
+        else:
+            # Artifact scores are not probabilities. Calibration is fit on training only.
+            train_score=x[train]@weights
+            design=np.c_[np.ones(len(train_score)),train_score]
+            beta=np.linalg.lstsq(design,target[train],rcond=None)[0]
+            pred=beta[0]+ranking*beta[1]
+            contributions=x[-1]*weights*beta[1]
         engine='AlphaGen 因子池 · 本地兼容评估'
     else:
         design=np.c_[np.ones(train.sum()),x[train]]
@@ -242,7 +266,7 @@ def analyze(df, market='CN', horizon=5, topk=3, cost_bps=15, pool=None, source='
             if fic is not None: factor_ics[j].append(fic)
     # Non-overlapping, fully liquidated equal-weight baskets; costs paid both
     # sides. The curve is sampled at exits, so intra-period drawdown is unknown.
-    nav=bench=1.; equity=[{'date':dates[vcut],'nav':1.,'benchmark':1.}]; trades=[]
+    nav=bench=1.; equity=[] if inference_only else [{'date':dates[vcut],'nav':1.,'benchmark':1.}]; trades=[]
     k=min(topk,len(close.columns))
     for i in range(vcut,n-horizon-1,horizon):
         available=np.flatnonzero(valid[i]&np.isfinite(target[i]))
@@ -254,7 +278,7 @@ def analyze(df, market='CN', horizon=5, topk=3, cost_bps=15, pool=None, source='
         nav*=1+net; bench*=1+bret
         equity.append({'date':dates[i+horizon+1],'nav':nav,'benchmark':bench})
         trades.append({'signal':dates[i],'entry':dates[i+1],'exit':dates[i+horizon+1], 'symbols':', '.join(close.columns[chosen]),'gross':gross,'net':net})
-    values=np.array([r['nav'] for r in equity]); dd=values/np.maximum.accumulate(values)-1
+    values=np.array([r['nav'] for r in equity]); dd=values/np.maximum.accumulate(values)-1 if len(values) else []
     period_returns=np.array([t['net'] for t in trades]); ann=252/horizon
     sharpe=float(period_returns.mean()/period_returns.std(ddof=1)*np.sqrt(ann)) if len(period_returns)>1 and period_returns.std()>1e-12 else None
     instruments=[]
@@ -268,8 +292,8 @@ def analyze(df, market='CN', horizon=5, topk=3, cost_bps=15, pool=None, source='
     instruments.sort(key=lambda r:r['score'],reverse=True)
     for i,r in enumerate(instruments): r['rank']=i+1
     factors=[{'id':f'ALPHA_{j+1:03d}','name':('上游因子 '+str(j+1)) if pool else BUILTIN['names'][j], 'expr':e,'weight':float(weights[j]),'ic':float(np.mean(factor_ics[j])) if factor_ics[j] else None} for j,e in enumerate(exprs)]
-    corr=np.corrcoef(x[test].T) if len(exprs)>1 else np.ones((1,1))
-    return {'version':VERSION,'market':market,'source':source,'sourceDetails':df.attrs.get('source_details',{}),'asof':dates[-1],'engine':engine,'poolImported':bool(pool),'horizon':horizon,'topk':k,'costBps':cost_bps,'trainEnd':train_end,'trainLabelEnd':dates[cut-1],'validationStart':dates[cut],'testStart':dates[vcut], 'rows':len(df),'days':n,'alignmentDropped':original-n,'currency':'CNY' if market=='CN' else 'HKD','instruments':instruments,'factors':factors,'correlation':corr.tolist(),'ics':ics,'metrics':metrics,'backtest':{'equity':equity,'trades':trades,'return':nav-1,'benchmarkReturn':bench-1,'maxDrawdown':float(dd.min()),'sharpe':sharpe},'rmse':rmse,'pool':pool}
+    corr=np.full((len(exprs),len(exprs)),np.nan) if inference_only else (np.corrcoef(x[test].T) if len(exprs)>1 else np.ones((1,1)))
+    return {'version':VERSION,'market':market,'source':source,'sourceDetails':df.attrs.get('source_details',{}),'asof':dates[-1],'engine':engine,'poolImported':bool(pool),'inferenceOnly':inference_only,'horizon':horizon,'topk':k,'costBps':cost_bps,'trainEnd':train_end,'trainLabelEnd':dates[cut-1],'validationStart':dates[cut] if cut<n else None,'testStart':dates[vcut] if vcut<n else None,'splitAdjusted':split_adjusted,'splitCounts':[cut,vcut-cut,n-vcut], 'rows':len(df),'days':n,'alignmentDropped':original-n,'currency':'CNY' if market=='CN' else 'HKD','instruments':instruments,'factors':factors,'correlation':corr.tolist(),'ics':ics,'metrics':metrics,'backtest':{'equity':equity,'trades':trades,'return':None if inference_only else nav-1,'benchmarkReturn':None if inference_only else bench-1,'maxDrawdown':None if inference_only else float(dd.min()),'sharpe':sharpe},'rmse':rmse,'pool':pool}
 
 def clean_json(value):
     if isinstance(value,dict): return {k:clean_json(v) for k,v in value.items()}

@@ -105,7 +105,10 @@ class Handler(BaseHTTPRequestHandler):
                     atomic(DATA/(market+'_source.json'),json.dumps({'source':'csv'})); CACHE.clear()
                 elif path=='/api/pool':
                     df,source=load(market)
-                    checked=engine.analyze(df,market,pool=body.get('pool'),source=source)
+                    horizon=body.get('horizon',5); topk=body.get('topk',3); cost=body.get('cost',15)
+                    if type(horizon)!=int or type(topk)!=int or type(cost) not in (int,float): raise ValueError('参数类型错误。')
+                    # Validate the exact visible horizon before persisting the pool.
+                    checked=engine.analyze(df,market,horizon,topk,cost,pool=body.get('pool'),source=source)
                     if not checked['pool']: raise ValueError('未提供因子池。')
                     atomic(DATA/(market+'_pool.json'),json.dumps(checked['pool'],ensure_ascii=False)); CACHE.clear()
                 elif path=='/api/reset':
